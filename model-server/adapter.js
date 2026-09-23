@@ -1,5 +1,80 @@
 import {err} from '../shared/errors.js';
-export function modelConfig(){return {baseUrl:process.env.NEXORA_MODEL_URL||'http://127.0.0.1:11434/v1',model:process.env.NEXORA_MODEL_NAME||'local-coding-model',apiKey:process.env.NEXORA_MODEL_API_KEY||'',configured:!!process.env.NEXORA_MODEL_URL};}
+
+export function modelConfig(){
+  return {
+    baseUrl:process.env.NEXORA_MODEL_URL||'http://127.0.0.1:8000/v1',
+    model:process.env.NEXORA_MODEL_NAME||'nexora-coder',
+    apiKey:process.env.NEXORA_MODEL_API_KEY||'',
+    configured:!!process.env.NEXORA_MODEL_URL
+  };
+}
+
 function endpoint(c,path){return c.baseUrl.replace(/\/$/,'')+path;}
-export async function health(){const c=modelConfig();try{const r=await fetch(endpoint(c,'/models'),{signal:AbortSignal.timeout(3000),headers:c.apiKey?{Authorization:`Bearer ${c.apiKey}`}:{}});return {available:r.ok,status:r.status,config:{...c,apiKey:c.apiKey?'configured':'not configured'}};}catch(e){return {available:false,error:e.message,config:{...c,apiKey:c.apiKey?'configured':'not configured'}};}}
-export async function chat(messages){const c=modelConfig();if(!c.configured)throw err('MODEL_NOT_CONFIGURED','No self-hosted model endpoint is configured. Set NEXORA_MODEL_URL to a reachable OpenAI-compatible model server.',503);try{const r=await fetch(endpoint(c,'/chat/completions'),{method:'POST',headers:{'Content-Type':'application/json',...(c.apiKey?{Authorization:`Bearer ${c.apiKey}`}:{})},body:JSON.stringify({model:c.model,messages,temperature:0.15,stream:false}),signal:AbortSignal.timeout(120000)});if(!r.ok)throw err('MODEL_ERROR',`Model server returned HTTP ${r.status}`,502);const j=await r.json();return j.choices?.[0]?.message?.content||'';}catch(e){if(e.code)throw e;throw err('MODEL_UNAVAILABLE',`Self-hosted model unavailable: ${e.message}`,503);}}
+
+export async function health(){
+  const c=modelConfig();
+  try{
+    const r=await fetch(endpoint(c,'/models'),{
+      signal:AbortSignal.timeout(5000),
+      headers:c.apiKey?{Authorization:`Bearer ${c.apiKey}`}:{}
+    });
+    let body=null;
+    try{body=await r.json();}catch{}
+    return {
+      available:r.ok,
+      status:r.status,
+      model:c.model,
+      endpoint:c.baseUrl,
+      serverModels:body?.data||[],
+      config:{...c,apiKey:c.apiKey?'configured':'not configured'}
+    };
+  }catch(e){
+    return {
+      available:false,
+      error:e.message,
+      model:c.model,
+      endpoint:c.baseUrl,
+      config:{...c,apiKey:c.apiKey?'configured':'not configured'}
+    };
+  }
+}
+
+export async function chat(messages,options={}){
+  const c=modelConfig();
+  if(!c.configured){
+    throw err('MODEL_NOT_CONFIGURED','No Nexora Coding Model endpoint is configured. Set NEXORA_MODEL_URL to the reachable model runtime.',503);
+  }
+  try{
+    const payload={
+      model:c.model,
+      messages,
+      temperature:options.temperature??0.15,
+      max_tokens:options.maxTokens??32768,
+      stream:false
+    };
+    if(options.tools)payload.tools=options.tools;
+    if(options.toolChoice)payload.tool_choice=options.toolChoice;
+    const r=await fetch(endpoint(c,'/chat/completions'),{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        ...(c.apiKey?{Authorization:`Bearer ${c.apiKey}`}:{})
+      },
+      body:JSON.stringify(payload),
+      signal:AbortSignal.timeout(options.timeoutMs??180000)
+    });
+    if(!r.ok){
+      const detail=await r.text().catch(()=> '');
+      throw err('MODEL_ERROR',`Model server returned HTTP ${r.status}`,502,{response:detail.slice(0,4000)});
+    }
+    const j=await r.json();
+    const message=j.choices?.[0]?.message;
+    if(!message?.content && !message?.tool_calls){
+      throw err('MODEL_EMPTY','Model server returned an empty response',502);
+    }
+    return message.content||JSON.stringify({tool_calls:message.tool_calls});
+  }catch(e){
+    if(e.code)throw e;
+    throw err('MODEL_UNAVAILABLE',`Nexora Coding Model unavailable: ${e.message}`,503);
+  }
+}
