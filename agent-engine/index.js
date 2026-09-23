@@ -30,7 +30,16 @@ function extractJsonObject(text){
 function parseAction(text){
  const raw=String(text||'').trim();
  const candidates=[raw,raw.replace(/^\s*\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`\s*$/,'').trim(),extractJsonObject(raw)].filter(Boolean);
- for(const candidate of candidates){try{const parsed=JSON.parse(candidate);if(parsed&&typeof parsed==='object')return parsed;}catch{}}
+ for(const candidate of candidates){
+  try{
+   const parsed=JSON.parse(candidate);
+   if(parsed&&typeof parsed==='object'){
+    const action=parsed.action&&typeof parsed.action==='object'?parsed.action:parsed;
+    if(action&&action.type==='write_files'&&!Array.isArray(action.files)&&action.path&&typeof action.content==='string'){action.type='write_file';}
+    return {...parsed,action};
+   }
+  }catch{}
+ }
  throw err('MODEL_PROTOCOL','Model did not return valid JSON action protocol',502,{raw:raw.slice(0,4000)});
 }
 function context(project,request,spec){const memory=getMemory(project.id).slice(0,100);return {brief:{name:project.name,type:project.type,frontend:project.frontend,backend:project.backend,database:project.database_kind,...spec},memory,files:searchContext(project.id,request).slice(0,18).map(x=>({path:x.path,language:x.language,content:x.content.slice(0,14000)}))};}
@@ -88,7 +97,20 @@ export async function execute({project,request,spec={},onStep}){
     messages.push({role:'user',content:'PROTOCOL REPAIR: Return ONLY one valid JSON object. No markdown fences and no prose. Required shape: {"message":"short progress message","action":{"type":"write_file|write_files|run|build|test|android_build|security_scan|index|remember|finish", ...}}.'});
    }
   }
-  const result=await executeAction(project,current.action);const record={step,message:current.message,action:current.action,result};history.push(record);onStep?.(record);
+  let result;
+  try{
+   result=await executeAction(project,current.action);
+  }catch(actionError){
+   const failure={success:false,error:actionError.message,code:actionError.code||'ACTION_FAILED',details:actionError.details||{}};
+   const record={step,message:current.message,action:current.action,result:failure};
+   history.push(record);onStep?.(record);
+   if(step>=MAX_STEPS) throw actionError;
+   history.push({step,message:'Action failed; requesting a corrected action.',action:{type:'action_retry'},result:failure});
+   messages.push({role:'assistant',content:raw});
+   messages.push({role:'user',content:'ACTION FAILED. Return the next corrected action only. Error code: '+failure.code+'. Error: '+failure.error+'. For write_files, files MUST be an array of objects with path and content; for one file use write_file with path and content.'});
+   continue;
+  }
+  const record={step,message:current.message,action:current.action,result};history.push(record);onStep?.(record);
   if(current.action.type==='finish')return {status:'completed',message:current.action.message||current.message,steps:history};
  }
  throw err('AGENT_MAX_STEPS','Agent reached the maximum execution steps without finishing',422,{steps:history.length});
