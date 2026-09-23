@@ -44,7 +44,7 @@ const system=[
 'For new projects, establish production structure first, then implement the required frontend/backend/database/auth/admin/API flows appropriate to the request. Never use fake buttons, fake success messages, placeholder business logic or invented deployment results.',
 'If stack fields are auto, choose a stable appropriate stack and record that decision in memory.',
 'Never expose secrets or commit .env/private keys. Never claim an operation succeeded unless its tool result says it succeeded.',
-'Return ONLY JSON: {"message":"short progress message","action":{"type":"...","path":"","content":"","command":"","files":[],"variant":""}}.',
+'Return ONLY one compact JSON object: {"message":"short progress message","action":{"type":"...","path":"","content":"","command":"","files":[],"variant":""}}. Do not include markdown, prose, or explanations.',
 'Action types: write_file, write_files, run, build, test, android_build, security_scan, index, remember, finish.',
 'write_files may contain up to 8 files. Use small verifiable increments. After major implementation, build/test. If a command fails, inspect the actual error and fix it before retrying.'
 ].join('\\n');
@@ -79,7 +79,7 @@ export async function execute({project,request,spec={},onStep}){
   let current=null;
   let raw='';
   for(let attempt=1;attempt<=3;attempt++){
-   raw=await chat(messages,{maxTokens:32768,timeoutMs:240000});
+   raw=await chat(messages,{maxTokens:8192,timeoutMs:240000,responseFormat:{type:'json_object'}});
    try{current=parseAction(raw);break;}
    catch(protocolError){
     if(attempt===3)throw protocolError;
