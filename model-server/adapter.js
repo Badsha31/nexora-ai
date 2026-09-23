@@ -88,13 +88,15 @@ export async function chat(messages,options={}){
     if(options.reasoning)base.reasoning=options.reasoning;
     if(options.responseFormat)base.response_format=options.responseFormat;
 
-    let j=await requestCompletion(c,{...base,__timeoutMs:options.timeoutMs??240000});
+    const requestPayload={...base};
+    const timeoutMs=options.timeoutMs??240000;
+    let j=await requestCompletion(c,{...requestPayload,__timeoutMs:timeoutMs});
     let content=extractContent(j);
     if(content)return content;
 
     // A small retry handles transient empty generations from Workers AI.
     j=await requestCompletion(c,{
-      ...base,
+      ...requestPayload,
       temperature:0,
       max_tokens:Math.min(base.max_tokens,4096),
       messages:[
