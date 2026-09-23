@@ -10,9 +10,14 @@ const $=s=>document.querySelector(s);
 
 async function api(url,opt={}){
   const headers={'Content-Type':'application/json',...(opt.headers||{})};
-  const r=await fetch(url,{...opt,headers});
+  let r;
+  try{
+    r=await fetch(url,{...opt,headers,cache:'no-store'});
+  }catch(e){
+    throw new Error('Backend connection failed. Please reload the page and check the Render service.');
+  }
   const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
-  if(!j.success) throw new Error(j.error?.message||'Request failed');
+  if(!r.ok||!j.success) throw new Error(j.error?.message||('Request failed (HTTP '+r.status+')'));
   return j.data;
 }
 
@@ -21,17 +26,19 @@ function escapeHtml(s){
 }
 
 async function render(){
+  let projectLoadError='';
   try{
     state.projects=await api('/api/projects');
-    if(state.currentProject){
-      state.currentProject=state.projects.find(p=>p.id===state.currentProject.id)||state.currentProject;
-    }
-    document.querySelector('#app').innerHTML=home();
-    bindHome();
   }catch(e){
-    document.querySelector('#app').innerHTML='<main class="error-screen"><div><div class="logo-mini">N</div><h2>Nexora AI</h2><p>'+escapeHtml(e.message)+'</p><button id="retry">Retry</button></div></main>';
-    $('#retry').onclick=render;
+    state.projects=[];
+    projectLoadError=e.message;
   }
+  if(state.currentProject){
+    state.currentProject=state.projects.find(p=>p.id===state.currentProject.id)||state.currentProject;
+  }
+  document.querySelector('#app').innerHTML=home();
+  bindHome();
+  if(projectLoadError)addMessage('ai','⚠️ '+projectLoadError+' You can still start a new project; the server error will be shown when you submit the request.');
 }
 
 function home(){
