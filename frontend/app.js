@@ -1,4 +1,4 @@
-let state={projects:[],currentProject:null,sending:false};
+let state={projects:[],currentProject:null,sending:false,forceWizard:false};
 const $=s=>document.querySelector(s);
 async function api(url,opt={}){
   opt.headers={'Content-Type':'application/json',...(opt.headers||{})};
@@ -9,7 +9,7 @@ async function render(){
   try{
     state.projects=await api('/api/projects');
     state.currentProject=state.projects.find(p=>p.id===state.currentProject?.id)||state.projects[0]||null;
-    document.querySelector('#app').innerHTML=state.currentProject?layout():wizard();
+    document.querySelector('#app').innerHTML=state.forceWizard||!state.currentProject?wizard():layout();
     bind();
   }catch(e){document.querySelector('#app').innerHTML='<main class="center"><div><h2>Nexora AI</h2><p>'+escapeHtml(e.message)+'</p><button id="retry">Retry</button></div></main>';$('#retry').onclick=render;}
 }
@@ -34,14 +34,14 @@ async function createFromWizard(e){
   const name=$('#name').value.trim(),type=$('#type').value,frontend=$('#frontend').value,backend=$('#backend').value,database=$('#database').value,requirements=$('#requirements').value.trim(),file=$('#reference').files[0];
   const p=await api('/api/projects',{method:'POST',body:JSON.stringify({name,type,frontend,backend,database,requirements})});
   if(file){status.textContent='Uploading design reference…';const dataUrl=await fileToDataUrl(file);await api('/api/projects/'+p.id+'/reference',{method:'POST',body:JSON.stringify({dataUrl,name:file.name})});}
-  state.projects=[p,...state.projects];state.currentProject=p;status.textContent='Starting website/Android/security engineer…';await render();await send('Build this project completely now. Project name: '+name+'. Type: '+type+'. Frontend: '+frontend+'. Backend: '+backend+'. Database: '+database+'. Requirements: '+(requirements||'none')+'. Use the uploaded design reference as the visual source of truth. Implement real production-ready functionality, then run appropriate build/tests.'); 
+  state.projects=[p,...state.projects];state.currentProject=p;state.forceWizard=false;status.textContent='Starting website/Android/security engineer…';await render();await send('Build this project completely now. Project name: '+name+'. Type: '+type+'. Frontend: '+frontend+'. Backend: '+backend+'. Database: '+database+'. Requirements: '+(requirements||'none')+'. Use the uploaded design reference as the visual source of truth. Implement real production-ready functionality, then run appropriate build/tests.'); 
  }catch(e){status.textContent='Build start failed: '+e.message;btn.disabled=false;}
 }
 function bind(){
  const form=$('#factoryForm');if(form){form.onsubmit=createFromWizard;return;}
  $('#send').onclick=()=>send();$('#req').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
  $('#zipBtn').onclick=downloadZip;$('#deployBtn').onclick=deployProject;$('#buildBtn').onclick=buildProject;$('#securityBtn').onclick=securityScan;
- $('#newchat').onclick=()=>{state.currentProject=null;render()};
+ $('#newchat').onclick=()=>{state.forceWizard=true;render()};
  document.querySelectorAll('.project').forEach(b=>b.onclick=()=>{state.currentProject=state.projects.find(p=>p.id===b.dataset.id);render()});
  $('#projectSelect').onchange=()=>{state.currentProject=state.projects.find(p=>p.id===$('#projectSelect').value);render()};
 }
