@@ -1,48 +1,254 @@
-let state={projects:[],currentProject:null,sending:false,forceWizard:false};
+const state={
+  projects:[],
+  currentProject:null,
+  messages:[],
+  sending:false,
+  intake:null
+};
+
 const $=s=>document.querySelector(s);
+
 async function api(url,opt={}){
-  opt.headers={'Content-Type':'application/json',...(opt.headers||{})};
-  const r=await fetch(url,opt);const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
-  if(!j.success)throw new Error(j.error?.message||'Request failed');return j.data;
+  const headers={'Content-Type':'application/json',...(opt.headers||{})};
+  const r=await fetch(url,{...opt,headers});
+  const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
+  if(!j.success) throw new Error(j.error?.message||'Request failed');
+  return j.data;
 }
+
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
 async function render(){
   try{
     state.projects=await api('/api/projects');
-    state.currentProject=state.projects.find(p=>p.id===state.currentProject?.id)||state.projects[0]||null;
-    document.querySelector('#app').innerHTML=state.forceWizard||!state.currentProject?wizard():layout();
-    bind();
-  }catch(e){document.querySelector('#app').innerHTML='<main class="center"><div><h2>Nexora AI</h2><p>'+escapeHtml(e.message)+'</p><button id="retry">Retry</button></div></main>';$('#retry').onclick=render;}
+    if(state.currentProject){
+      state.currentProject=state.projects.find(p=>p.id===state.currentProject.id)||state.currentProject;
+    }
+    document.querySelector('#app').innerHTML=home();
+    bindHome();
+  }catch(e){
+    document.querySelector('#app').innerHTML='<main class="error-screen"><div><div class="logo-mini">N</div><h2>Nexora AI</h2><p>'+escapeHtml(e.message)+'</p><button id="retry">Retry</button></div></main>';
+    $('#retry').onclick=render;
+  }
 }
-function wizard(){
- return '<main class="chat-home"><aside class="home-side"><div class="brand">NEXORA <span>AI</span></div><div class="side-caption">Personal AI Development Factory</div><div class="home-tip">Website Engineer<br>Android Build Engineer<br>Cyber Security Engineer</div><a href="/admin.html">Master Admin ↗</a></aside><section class="home-chat"><header class="home-top"><div class="mobile-brand">NEXORA AI</div><div class="home-model"><span>●</span> Nexora Engineering AI <small>⌄</small></div></header><div class="welcome"><div class="welcome-mark">N</div><h1>How can I help you build?</h1><p>Describe what you want to create. Nexora will ask only for the project details it needs, then engineer the real project.</p><div class="suggestions"><button data-prompt="Build a premium business website">Build a website</button><button data-prompt="Build an Android app and APK">Build an Android app</button><button data-prompt="Scan and secure my project">Security engineer</button></div></div><form id="factoryForm" class="home-composer"><label class="attach">＋<input id="reference" type="file" accept="image/png,image/jpeg,image/webp"></label><textarea id="requirements" rows="1" placeholder="Message Nexora AI…"></textarea><button class="send-home" type="submit">↑</button><input id="name" type="hidden" value=""><input id="type" type="hidden" value="website"><select id="frontend" hidden><option>auto</option></select><select id="backend" hidden><option>auto</option></select><select id="database" hidden><option>auto</option></select></form><div id="factoryStatus" class="status"></div><div class="home-disclaimer">Nexora can create, edit, build, test and secure projects. Deployment and safety permissions remain controlled by Master Admin.</div></section></main>';
+
+function home(){
+  return '<div class="ai-shell">'+
+    '<aside class="ai-sidebar">'+
+      '<div class="side-head"><div class="brand">NEXORA <span>AI</span></div><button id="closeSide" class="icon-btn">×</button></div>'+
+      '<button id="newChat" class="new-chat">＋ <span>New chat</span></button>'+
+      '<div class="side-label">RECENT</div>'+
+      '<div id="recentChats" class="recent">'+(state.projects.length?state.projects.slice(0,12).map(p=>'<button class="recent-item '+(state.currentProject?.id===p.id?'active':'')+'" data-id="'+escapeHtml(p.id)+'"><span>◈</span><span>'+escapeHtml(p.name)+'</span></button>').join(''):'<div class="empty-recent">No projects yet</div>')+'</div>'+
+      '<div class="side-spacer"></div>'+
+      '<a class="admin-link" href="/admin.html">⚙ Master Admin</a>'+
+      '<div class="side-note">Personal AI Development Factory</div>'+
+    '</aside>'+
+    '<main class="ai-main">'+
+      '<header class="ai-header"><button id="openSide" class="icon-btn mobile-only">☰</button><div class="header-model"><span class="online-dot"></span>Nexora AI</div><div class="header-actions">'+(state.currentProject?'<button id="projectZip">ZIP</button><button id="projectDeploy">Deploy</button>':'')+'</div></header>'+
+      '<section id="chat" class="chat-area">'+
+        '<div id="messages" class="messages"></div>'+
+      '</section>'+
+      '<div class="composer-area">'+
+        '<form id="composer" class="composer">'+
+          '<label class="attach-btn" title="Attach design reference">＋<input id="attachment" type="file" accept="image/png,image/jpeg,image/webp"></label>'+
+          '<textarea id="messageInput" rows="1" autocomplete="off" placeholder="Message Nexora AI…"></textarea>'+
+          '<button id="sendBtn" class="send-btn" type="submit" aria-label="Send">↑</button>'+
+        '</form>'+
+        '<div id="attachName" class="attach-name"></div>'+
+        '<div class="composer-note">Nexora can create, edit, build, test, secure and deploy projects. Master Admin controls safety and deployment permissions.</div>'+
+      '</div>'+
+    '</main>'+
+  '</div>';
 }
-function layout(){
- const p=state.currentProject;
- return '<div class="shell"><aside class="left"><div class="brand">NEXORA <span>AI</span></div><button class="newchat" id="newchat">＋ New project</button><div class="section-title">PROJECTS</div><div id="projects">'+state.projects.map(x=>'<button class="project '+(p?.id===x.id?'active':'')+'" data-id="'+x.id+'"><span>◈</span>'+escapeHtml(x.name)+'</button>').join('')+'</div><div class="left-bottom"><a href="/admin.html">Master Admin ↗</a></div></aside><main class="chat-main"><header class="topbar"><div class="mobile-brand">NEXORA AI</div><div class="model-badge">● Nexora Engineering AI</div><div class="actions"><button id="buildBtn">Build</button><button id="securityBtn">Security</button><button id="zipBtn">ZIP</button><button id="deployBtn">Deploy</button></div><select id="projectSelect">'+state.projects.map(x=>'<option value="'+x.id+'" '+(p?.id===x.id?'selected':'')+'>'+escapeHtml(x.name)+'</option>').join('')+'</select></header><section class="conversation"><div class="project-head"><div><div class="eyebrow">'+escapeHtml(p.type||'website')+' ENGINEER</div><h1>'+escapeHtml(p.name)+'</h1><p>'+escapeHtml((p.frontend||'auto')+' · '+(p.backend||'auto')+' · '+(p.database_kind||'auto'))+'</p></div><div class="stack-pill">'+escapeHtml(p.frontend||'auto')+'</div></div><div id="messages"></div></section><div class="composer-wrap"><div class="composer"><textarea id="req" rows="1" placeholder="Tell Nexora what to build, change, debug or secure…"></textarea><button id="send" aria-label="Send">↑</button></div><div class="hint">Nexora can edit files, run permitted commands, build, test, security-scan, export and deploy. Safety controls stay outside the AI.</div></div></main></div>';
+
+function renderMessages(){
+  const box=$('#messages');
+  if(!box)return;
+  if(!state.messages.length){
+    box.innerHTML='<div class="welcome-chat">'+
+      '<div class="welcome-icon">N</div>'+
+      '<h1>How can I help you build?</h1>'+
+      '<p>I can build real websites, Android apps and security-focused projects. Tell me what you want to create.</p>'+
+      '<div class="prompt-grid">'+
+        '<button data-prompt="Build a premium business website">Build a website</button>'+
+        '<button data-prompt="Build a complete Android app">Build an Android app</button>'+
+        '<button data-prompt="Create a premium ecommerce website">Build an online store</button>'+
+        '<button data-prompt="Review and secure my project">Security engineer</button>'+
+      '</div>'+
+    '</div>';
+    return;
+  }
+  box.innerHTML=state.messages.map((m,i)=>{
+    if(m.role==='user')return '<div class="msg-row user-row"><div class="user-bubble">'+escapeHtml(m.text)+'</div></div>';
+    return '<div class="msg-row ai-row"><div class="ai-avatar">N</div><div class="ai-message">'+formatText(m.text)+'</div></div>';
+  }).join('');
+  box.lastElementChild?.scrollIntoView({behavior:'smooth',block:'end'});
 }
-function add(role,text){const m=$('#messages');m.insertAdjacentHTML('beforeend','<div class="bubble '+role+'"><div class="bubble-label">'+(role==='user'?'You':'Nexora AI')+'</div><pre>'+escapeHtml(text)+'</pre></div>');m.lastElementChild.scrollIntoView({behavior:'smooth',block:'end'});}
-async function send(textOverride){
- const req=(textOverride||$('#req').value).trim();if(!req||!state.currentProject||state.sending)return;
- state.sending=true;$('#send').disabled=true;if(!textOverride)$('#req').value='';add('user',req);add('ai','Nexora is engineering the project…');const pending=$('#messages').lastElementChild.querySelector('pre');
- try{const x=await api('/api/projects/'+state.currentProject.id+'/execute',{method:'POST',body:JSON.stringify({request:req})});pending.textContent=x.message||'Completed';if(x.steps)pending.textContent=(x.message||'Completed')+'\n\n'+x.steps.map(a=>'#'+a.step+' '+(a.message||a.action?.type||'')).join('\n');}
- catch(e){pending.textContent='ERROR: '+e.message}finally{state.sending=false;$('#send').disabled=false;}
+
+function formatText(t){
+  const safe=escapeHtml(t);
+  return safe.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
 }
-function fileToDataUrl(file){return new Promise((resolve,reject)=>{if(!file)return resolve('');const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);});}
-async function createFromWizard(e){
- e.preventDefault();const status=$('#factoryStatus'),btn=$('.send-home');btn.disabled=true;
- try{
-  const textReq=$('#requirements').value.trim();const file=$('#reference').files[0];
-  if(!textReq&&!file){status.textContent='Tell me what you want to build or attach a design reference.';btn.disabled=false;return}
-  status.textContent='Nexora is preparing your project…';
-  let name='Nexora Project';let type='website';let frontend='auto';let backend='auto';let database='auto';
-  const lower=textReq.toLowerCase();if(/android|apk|aab|mobile app/.test(lower))type='android';else if(/security|cyber|secure|pentest|vulnerability/.test(lower))type='cyber';
-  const nameMatch=textReq.match(/(?:name|called|named)[:\s]+["']?([A-Za-z0-9][A-Za-z0-9 ._-]{1,70})["']?/i);if(nameMatch)name=nameMatch[1].trim();
-  if(/react/.test(lower))frontend='React';else if(/next\.js|nextjs/.test(lower))frontend='Next.js';else if(/vue/.test(lower))frontend='Vue';else if(/html|css|javascript/.test(lower))frontend='HTML/CSS/JS';
-  if(/node/.test(lower))backend='Node.js/Express';else if(/fastify/.test(lower))backend='Node.js/Fastify';else if(/fastapi|python/.test(lower))backend='Python/FastAPI';else if(/no backend|frontend only/.test(lower))backend='none';
-  if(/turso/.test(lower))database='Turso';else if(/postgres/.test(lower))database='PostgreSQL';else if(/sqlite/.test(lower))database='SQLite';else if(/no database/.test(lower))database='none';
-  const p=await api('/api/projects',{method:'POST',body:JSON.stringify({name,type,frontend,backend,database,requirements:textReq})});
-  if(file){status.textContent='Reading your design reference…';const dataUrl=await fileToDataUrl(file);await api('/api/projects/'+p.id+'/reference',{method:'POST',body:JSON.stringify({dataUrl,name:file.name})});}
-  state.projects=[p,...state.projects];state.currentProject=p;state.forceWizard=false;await render();
-  await send('Build this project completely now. User request: '+textReq+'. Project name: '+name+'. Type: '+type+'. Frontend: '+frontend+'. Backend: '+backend+'. Database: '+database+'. Use the uploaded design reference as the visual source of truth if provided. If any required project choice is still unspecified, infer a stable production choice instead of stopping. Implement real production-ready functionality, then build and test.');
- }catch(e){status.textContent='Nexora error: '+e.message;btn.disabled=false;}
+
+function addMessage(role,text){
+  state.messages.push({role,text});
+  renderMessages();
 }
+
+function bindHome(){
+  renderMessages();
+
+  $('#composer').addEventListener('submit',e=>{e.preventDefault();sendMessage();});
+  $('#messageInput').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
+  });
+  $('#messageInput').addEventListener('input',e=>{
+    e.target.style.height='auto';
+    e.target.style.height=Math.min(e.target.scrollHeight,180)+'px';
+  });
+  $('#attachment').addEventListener('change',e=>{
+    const f=e.target.files[0];
+    $('#attachName').textContent=f?'📎 '+f.name:'';
+  });
+  document.querySelectorAll('[data-prompt]').forEach(b=>b.onclick=()=>startFromPrompt(b.dataset.prompt));
+
+  $('#newChat').onclick=()=>{
+    state.currentProject=null;
+    state.messages=[];
+    state.intake=null;
+    render();
+  };
+  $('#openSide')?.addEventListener('click',()=>document.querySelector('.ai-sidebar')?.classList.add('open'));
+  $('#closeSide')?.addEventListener('click',()=>document.querySelector('.ai-sidebar')?.classList.remove('open'));
+
+  document.querySelectorAll('.recent-item').forEach(b=>b.onclick=()=>{
+    const p=state.projects.find(x=>x.id===b.dataset.id);
+    if(p){state.currentProject=p;state.messages=[{role:'ai',text:'Project **'+p.name+'** is selected. Tell me what you want to change, build, test or secure.'}];render();}
+  });
+
+  $('#projectZip')?.addEventListener('click',async()=>{
+    if(!state.currentProject)return;
+    window.location='/api/projects/'+state.currentProject.id+'/export.zip';
+  });
+  $('#projectDeploy')?.addEventListener('click',()=>deployCurrent());
+}
+
+function startFromPrompt(prompt){
+  addMessage('user',prompt);
+  startIntake(prompt);
+}
+
+function startIntake(initialRequest){
+  state.intake={step:0,request:initialRequest,name:'',reference:null,frontend:'',backend:'',database:''};
+  askNextIntake();
+}
+
+function askNextIntake(){
+  const q=[
+    'Project name ta ki hobe?',
+    'Design/reference image thakle ekhon attach koro. Na thakle **skip** likho.',
+    'Frontend konta use korte chao? **HTML/CSS/JS, React, Next.js, Vue** — ba **auto**.',
+    'Backend konta? **Node.js/Express, Node.js/Fastify, Python/FastAPI, none** — ba **auto**.',
+    'Database konta? **Turso, PostgreSQL, SQLite, none** — ba **auto**.'
+  ][state.intake.step];
+  addMessage('ai',q);
+}
+
+async function sendMessage(){
+  if(state.sending)return;
+  const input=$('#messageInput');
+  const text=input.value.trim();
+  const file=$('#attachment').files[0];
+  if(!text&&!file)return;
+  input.value='';input.style.height='auto';$('#sendBtn').disabled=true;state.sending=true;
+  try{
+    if(state.intake){
+      await handleIntake(text,file);
+    }else if(state.currentProject){
+      addMessage('user',text||'Attached a file.');
+      if(file)await uploadReference(state.currentProject,file);
+      await executeCurrent(text||'Analyze the attached design reference and update the project.');
+    }else{
+      addMessage('user',text||'Attached a design reference.');
+      startIntake(text||'Build a project from this design reference.');
+      if(file)state.intake.reference=file;
+    }
+  }catch(e){
+    addMessage('ai','ERROR: '+e.message);
+  }finally{
+    state.sending=false;$('#sendBtn').disabled=false;$('#attachment').value='';$('#attachName').textContent='';
+  }
+}
+
+async function handleIntake(text,file){
+  const i=state.intake;
+  if(i.step===0){
+    if(!text){addMessage('ai','Please give me the project name first.');return;}
+    i.name=text;i.step++;askNextIntake();return;
+  }
+  if(i.step===1){
+    if(file){i.reference=file;addMessage('user','📎 '+file.name);}
+    else if(text&&text.toLowerCase()!=='skip'&&text.toLowerCase()!=='no'){addMessage('ai','Attach the image using the ＋ button, or type **skip** if you do not have one.');return;}
+    i.step++;askNextIntake();return;
+  }
+  if(i.step===2){i.frontend=text||'auto';i.step++;askNextIntake();return;}
+  if(i.step===3){i.backend=text||'auto';i.step++;askNextIntake();return;}
+  if(i.step===4){
+    i.database=text||'auto';
+    addMessage('user',i.database);
+    await createProjectFromIntake();
+  }
+}
+
+async function createProjectFromIntake(){
+  const i=state.intake;
+  addMessage('ai','Perfect. I have the project details. Creating the workspace and starting the engineering process…');
+  const type=/android|apk|aab|mobile/i.test(i.request)?'android':/security|cyber|secure/i.test(i.request)?'cyber':'website';
+  const p=await api('/api/projects',{method:'POST',body:JSON.stringify({
+    name:i.name,type,frontend:i.frontend||'auto',backend:i.backend||'auto',database:i.database||'auto',requirements:i.request
+  })});
+  state.currentProject=p;
+  state.projects=[p,...state.projects.filter(x=>x.id!==p.id)];
+  if(i.reference)await uploadReference(p,i.reference);
+  state.intake=null;
+  await render();
+  addMessage('ai','Project **'+p.name+'** is ready. I will now build it from the requirements and reference. You can keep chatting while I work.');
+  await executeCurrent('Build this project completely now. Implement real production-ready functionality, use the uploaded design reference as the visual source of truth when available, then build and test. Do not report success unless the work actually succeeds.');
+}
+
+async function uploadReference(project,file){
+  const dataUrl=await fileToDataUrl(file);
+  await api('/api/projects/'+project.id+'/reference',{method:'POST',body:JSON.stringify({dataUrl,name:file.name})});
+}
+
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);
+  });
+}
+
+async function executeCurrent(request){
+  const thinking={role:'ai',text:'Nexora is working…'};
+  state.messages.push(thinking);renderMessages();
+  try{
+    const x=await api('/api/projects/'+state.currentProject.id+'/execute',{method:'POST',body:JSON.stringify({request})});
+    const summary=x?.message||x?.result?.message||'Engineering task completed.';
+    thinking.text=summary+(x?.steps?.length?'\n\n'+x.steps.map(s=>'• '+(s.message||s.action?.type||'Step completed')).join('\n'):'');
+  }catch(e){thinking.text='ERROR: '+e.message;}
+  renderMessages();
+}
+
+async function deployCurrent(){
+  if(!state.currentProject)return;
+  const provider=prompt('Deploy provider: local, render, vercel, cloudflare or hostinger','cloudflare');
+  if(!provider)return;
+  addMessage('user','Deploy to '+provider);
+  try{
+    const x=await api('/api/projects/'+state.currentProject.id+'/deploy',{method:'POST',body:JSON.stringify({provider})});
+    addMessage('ai',JSON.stringify(x,null,2));
+  }catch(e){addMessage('ai','ERROR: '+e.message);}
+}
+
+render();
