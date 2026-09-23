@@ -58,11 +58,12 @@ function extractContent(j){
 async function requestCompletion(c,payload){
   const headers={'Content-Type':'application/json'};
   if(c.apiKey)headers.Authorization=`Bearer ${c.apiKey}`;
+  const {__timeoutMs=240000,...requestBody}=payload;
   const r=await fetch(endpoint(c,'/chat/completions'),{
     method:'POST',
     headers,
-    body:JSON.stringify(payload),
-    signal:AbortSignal.timeout(payload.__timeoutMs??240000)
+    body:JSON.stringify(requestBody),
+    signal:AbortSignal.timeout(__timeoutMs)
   });
   const raw=await r.text();
   let j=null;try{j=raw?JSON.parse(raw):null}catch{}
