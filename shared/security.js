@@ -34,12 +34,41 @@ export function verifyPassword(password, stored) {
   }
 }
 
+function encryptionKey(secret) {
+  if (typeof secret !== 'string' || secret.length < 16) {
+    throw new TypeError('Encryption secret is too short');
+  }
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+export function encrypt(plaintext, secret) {
+  if (typeof plaintext !== 'string') {
+    throw new TypeError('Plaintext must be a string');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey(secret), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final()
+  ]);
+  return {
+    ciphertext: ciphertext.toString('hex'),
+    iv: iv.toString('hex'),
+    tag: cipher.getAuthTag().toString('hex')
+  };
+}
+
 export function decrypt(ciphertext, iv, tag, secret) {
-  if (typeof secret !== 'string' || secret.length < 16) throw new TypeError('Encryption secret is too short');
-  const key = crypto.createHash('sha256').update(secret).digest();
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    encryptionKey(secret),
+    Buffer.from(iv, 'hex')
+  );
   decipher.setAuthTag(Buffer.from(tag, 'hex'));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'hex')), decipher.final()]).toString('utf8');
+  return Buffer.concat([
+    decipher.update(Buffer.from(ciphertext, 'hex')),
+    decipher.final()
+  ]).toString('utf8');
 }
 
 export function hashSecret(value) {
