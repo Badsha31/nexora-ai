@@ -10,15 +10,27 @@ const $=s=>document.querySelector(s);
 
 async function api(url,opt={}){
   const headers={'Content-Type':'application/json',...(opt.headers||{})};
-  let r;
-  try{
-    r=await fetch(url,{...opt,headers,cache:'no-store'});
-  }catch(e){
-    throw new Error('Backend connection failed. Please reload the page and check the Render service.');
+  const retries=Number(opt.retries??2);
+  const requestOpt={...opt};
+  delete requestOpt.retries;
+  let lastError=null;
+  for(let attempt=0;attempt<=retries;attempt++){
+    let r;
+    try{
+      r=await fetch(url,{...requestOpt,headers,cache:'no-store'});
+    }catch(e){
+      lastError=e;
+      if(attempt<retries){
+        await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+        continue;
+      }
+      throw new Error('Backend connection failed. Please reload the page and check the Render service.');
+    }
+    const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
+    if(!r.ok||!j.success) throw new Error(j.error?.message||('Request failed (HTTP '+r.status+')'));
+    return j.data;
   }
-  const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
-  if(!r.ok||!j.success) throw new Error(j.error?.message||('Request failed (HTTP '+r.status+')'));
-  return j.data;
+  throw lastError||new Error('Backend connection failed.');
 }
 
 function escapeHtml(s){
