@@ -62,7 +62,10 @@ if(req.method==='POST'&&sub==='/execute'){
  });
  return json(res,202,{success:true,data:{operationId,status:'queued',projectId:p.id}});
 }}
-if(req.method==='GET'&&u.pathname==='/api/operations'){adminUser(req);return json(res,200,{success:true,data:db.prepare('SELECT * FROM operations ORDER BY id DESC LIMIT 100').all()});}
+if(req.method==='GET'&&u.pathname==='/api/operations'){
+ adminUser(req);const op=u.searchParams.get('id');if(op){const row=db.prepare('SELECT * FROM operations WHERE id=?').get(Number(op));if(!row)throw err('OPERATION_NOT_FOUND','Operation not found',404);return json(res,200,{success:true,data:row});}
+ return json(res,200,{success:true,data:db.prepare('SELECT * FROM operations ORDER BY id DESC LIMIT 100').all()});
+}
 if(req.method==='GET'&&u.pathname==='/api/credentials'){const user=adminUser(req);if(user.role!=='admin')throw err('FORBIDDEN','Admin required',403);return json(res,200,{success:true,data:listCredentials()});}
 throw err('NOT_FOUND','Route not found',404);
 }catch(e){console.error('[REAL ERROR]',e);return json(res,e.status||500,{success:false,error:{code:e.code||'INTERNAL_ERROR',message:e.message,details:e.details||{}}});}}
