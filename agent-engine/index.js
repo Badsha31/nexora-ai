@@ -43,6 +43,7 @@ export function parseAction(text){
  throw err('MODEL_PROTOCOL','Model did not return valid JSON action protocol',502,{raw:raw.slice(0,4000)});
 }
 function context(project,request,spec){const memory=getMemory(project.id).slice(0,100);return {brief:{name:project.name,type:project.type,frontend:project.frontend,backend:project.backend,database:project.database_kind,...spec},memory,files:searchContext(project.id,request).slice(0,18).map(x=>({path:x.path,language:x.language,content:x.content.slice(0,14000)}))};}
+const ACTION_RESPONSE_FORMAT={type:'json_schema',json_schema:{name:'nexora_action',strict:true,schema:{type:'object',additionalProperties:false,properties:{message:{type:'string'},action:{type:'object',additionalProperties:false,properties:{type:{type:'string',enum:['write_file','write_files','run','build','test','android_build','security_scan','index','remember','finish']},path:{type:'string'},content:{type:'string'},command:{type:'string'},variant:{type:'string'},files:{type:'array',items:{type:'object',additionalProperties:false,properties:{path:{type:'string'},content:{type:'string'}},required:['path','content']}}},required:['type']}},required:['message','action']}}};
 const system=[
 'You are Nexora AI, a production software factory with three specialist roles:',
 '1) WEBSITE ENGINEER: builds complete responsive websites and full-stack web apps from a name plus a visual reference and requested stack.',
@@ -88,7 +89,7 @@ export async function execute({project,request,spec={},onStep}){
   let current=null;
   let raw='';
   for(let attempt=1;attempt<=3;attempt++){
-   raw=await chat(messages,{maxTokens:8192,timeoutMs:240000,responseFormat:{type:'json_schema',json_schema:{name:'nexora_action',strict:true,schema:{type:'object',additionalProperties:false,properties:{message:{type:'string'},action:{type:'object',additionalProperties:false,properties:{type:{type:'string',enum:['write_file','write_files','run','build','test','android_build','security_scan','index','remember','finish']},path:{type:'string'},content:{type:'string'},command:{type:'string'},variant:{type:'string'},files:{type:'array',items:{type:'object',additionalProperties:false,properties:{path:{type:'string'},content:{type:'string'}},required:['path','content']}}},required:['type']}},required:['message','action']}}});
+   raw=await chat(messages,{maxTokens:8192,timeoutMs:240000,responseFormat:ACTION_RESPONSE_FORMAT})
    try{current=parseAction(raw);break;}
    catch(protocolError){
     if(attempt===3)throw protocolError;
