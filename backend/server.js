@@ -50,7 +50,7 @@ if(req.method==='POST'&&sub==='/plan'){const b=await body(req);return json(res,2
 if(req.method==='POST'&&sub==='/execute'){
  requirePolicy('model_access');const b=await body(req);if(!b.request)throw err('VALIDATION','request is required');
  const spec=normalizeProjectSpec({type:p.type,frontend:p.frontend,backend:p.backend,database:p.database_kind,requirements:getMemory(p.id).find(x=>x.type==='spec'&&x.key==='requirements')?.value||'',designReference:p.reference_path||''});
- const operationId=id();db.prepare('INSERT INTO operations(id,project_id,kind,status,command,output,error,started_at) VALUES(?,?,?,?,?,?,?,?)').run(operationId,p.id,'agent','queued',b.request,'','',now());
+ db.prepare('INSERT INTO operations(project_id,kind,status,command,output,error,started_at) VALUES(?,?,?,?,?,?,?)').run(p.id,'agent','queued',b.request,'','',now());const operationId=Number(db.prepare('SELECT last_insert_rowid() AS id').get().id);
  setImmediate(async()=>{
   db.prepare('UPDATE operations SET status=?,started_at=? WHERE id=?').run('running',now(),operationId);
   try{
