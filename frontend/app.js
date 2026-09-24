@@ -117,8 +117,7 @@ function bindHome(){
   renderMessages();
 
   $('#composer').addEventListener('submit',e=>{e.preventDefault();sendMessage();});
-  $('#messageInput').addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
+  $('#messageInput').addEventListener('keydown',e=>{    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
   });
   $('#messageInput').addEventListener('input',e=>{
     e.target.style.height='auto';
@@ -237,7 +236,6 @@ async function uploadReference(project,file){
   const dataUrl=await fileToDataUrl(file);
   await api('/api/projects/'+project.id+'/reference',{method:'POST',body:JSON.stringify({dataUrl,name:file.name})});
 }
-
 function fileToDataUrl(file){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);
@@ -245,12 +243,27 @@ function fileToDataUrl(file){
 }
 
 async function executeCurrent(request){
-  const thinking={role:'ai',text:'Nexora is working…'};
+  const thinking={role:'ai',text:'Nexora is working…\n\nThe engineering job is running in the background, so the chat will not time out while Render is waking up or the code is being built.'};
   state.messages.push(thinking);renderMessages();
   try{
-    const x=await api('/api/projects/'+state.currentProject.id+'/execute',{method:'POST',body:JSON.stringify({request})});
-    const summary=x?.message||x?.result?.message||'Engineering task completed.';
-    thinking.text=summary+(x?.steps?.length?'\n\n'+x.steps.map(s=>'• '+(s.message||s.action?.type||'Step completed')).join('\n'):'');
+    const started=await api('/api/projects/'+state.currentProject.id+'/execute',{method:'POST',body:JSON.stringify({request}),timeoutMs:30000,retries:3});
+    const operationId=started?.operationId;
+    if(!operationId)throw new Error('The backend did not return an engineering operation ID.');
+    for(let i=0;i<360;i++){
+      await new Promise(resolve=>setTimeout(resolve,i<10?2000:5000));
+      const op=await api('/api/operations?id='+encodeURIComponent(operationId),{timeoutMs:30000,retries:2});
+      if(op.status==='completed'){
+        let result={};try{result=op.output?JSON.parse(op.output):{};}catch{}
+        thinking.text=(result.message||'Engineering task completed successfully.')+'\n\nVerified background operation completed.';
+        break;
+      }
+      if(op.status==='failed'){
+        let failure={};try{failure=op.error?JSON.parse(op.error):{};}catch{}
+        throw new Error(failure.message||'Engineering operation failed.');
+      }
+      thinking.text='Nexora is working…\n\nStatus: '+op.status+' — building, testing and fixing the project.\nYou can keep chatting.';renderMessages();
+    }
+    if(thinking.text.startsWith('Nexora is working…'))throw new Error('Engineering operation is still running. Open the project again shortly to see the final result.');
   }catch(e){thinking.text='ERROR: '+e.message;}
   renderMessages();
 }
