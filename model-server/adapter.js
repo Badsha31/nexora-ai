@@ -150,7 +150,10 @@ export async function chat(messages,options={}){
   const timeoutMs=options.timeoutMs??240000;
   let j;
   let lastError=null;
-  for(const model of [c.model,c.fallbackModel].filter((v,i,a)=>v&&a.indexOf(v)===i)){
+  const configuredModels=[c.model,c.fallbackModel,'gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash-lite'];
+  const models=configuredModels.filter((v,i,a)=>v&&a.indexOf(v)===i);
+  const failures=[];
+  for(const model of models){
     try{
       j=await requestCompletion(c,{...base,__timeoutMs:timeoutMs},model);
       let content=extractContent(j);
@@ -165,11 +168,16 @@ export async function chat(messages,options={}){
         if(content)return content;
       }
       lastError=err('MODEL_EMPTY',`Gemini returned an empty response for ${model}`,502,{model});
+      failures.push({model,code:lastError.code,message:lastError.message,details:lastError.details||{}});
     }catch(e){
       lastError=e;
-      // Only fail over for transient/availability/model-selection failures.
       if(!['MODEL_ERROR','MODEL_EMPTY'].includes(e.code))throw e;
+      failures.push({model,code:e.code,message:e.message,details:e.details||{}});
     }
+  }
+  if(failures.length){
+    const summary=failures.map(x=>`${x.model}: ${x.message}`).join(' | ');
+    throw err('MODEL_UNAVAILABLE',`Gemini models unavailable: ${summary}`,503,{failures});
   }
   throw lastError||err('MODEL_UNAVAILABLE','Gemini model is unavailable.',503);
 }
