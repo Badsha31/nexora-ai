@@ -12,7 +12,11 @@ function projectSpecFromRow(p){return {type:p.type||'website',frontend:p.fronten
 function project(id){const p=db.prepare('SELECT * FROM projects WHERE id=?').get(id);if(!p)throw err('PROJECT_NOT_FOUND','Project not found',404);return p;}
 function adminUser(req){return auth(req);}
 async function route(req,res){const u=new URL(req.url,'http://localhost');try{
-if(req.method==='GET'&&u.pathname==='/api/health')return json(res,200,{success:true,data:{app:'Nexora AI',time:now(),node:process.version,model:await modelHealth(),policies:allPolicies()}});
+if(req.method==='GET'&&u.pathname==='/api/health'){
+  let dbOk=false;try{db.prepare('SELECT 1').get();dbOk=true;}catch{}
+  return json(res,dbOk?200:503,{success:dbOk,data:{app:'Nexora AI',time:now(),node:process.version,database:dbOk?'ok':'error',policies:allPolicies()}});
+}
+if(req.method==='GET'&&u.pathname==='/api/health/model')return json(res,200,{success:true,data:await modelHealth()});
 if(req.method==='POST'&&u.pathname==='/api/auth/login'){const b=await body(req);return json(res,200,{success:true,data:login(b.username,b.password)});}
 if(req.method==='GET'&&u.pathname==='/api/me')return json(res,200,{success:true,data:adminUser(req)});
 if(req.method==='GET'&&u.pathname==='/api/project-types')return json(res,200,{success:true,data:{types:['website','android','cyber'],frontends:['auto','HTML/CSS/JS','React','Next.js','Vue'],backends:['auto','none','Node.js/Express','Node.js/Fastify','Python/FastAPI'],databases:['auto','none','SQLite','PostgreSQL','Turso']}});
