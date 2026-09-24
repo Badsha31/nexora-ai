@@ -7,7 +7,7 @@ export function modelConfig(){
       provider:'gemini',
       baseUrl:(process.env.GEMINI_API_BASE_URL||'https://generativelanguage.googleapis.com/v1beta/openai').replace(/\/$/,''),
       model:process.env.GEMINI_MODEL_NAME||'gemini-3.8-flash',
-      fallbackModel:process.env.GEMINI_MODEL_FALLBACK||'gemini-3.5-flash-lite',
+      fallbackModel:process.env.GEMINI_MODEL_FALLBACK||'gemini-3.7-flash',
       apiKey:process.env.GEMINI_API_KEY||'',
       configured:!!process.env.GEMINI_API_KEY,
       keyless:false
@@ -55,13 +55,38 @@ export async function health(){
 
 function extractContent(j){
   const message=j?.choices?.[0]?.message;
-  const candidates=[message?.content,j?.choices?.[0]?.text,j?.output_text,j?.response,j?.text];
-  for(const value of candidates){
-    if(typeof value==='string'&&value.trim())return value;
+  const candidates=[
+    message?.content,
+    message?.reasoning_content,
+    message?.output_text,
+    j?.choices?.[0]?.text,
+    j?.output_text,
+    j?.response,
+    j?.text
+  ];
+  const read=(value)=>{
+    if(typeof value==='string'&&value.trim())return value.trim();
     if(Array.isArray(value)){
-      const text=value.map(x=>typeof x==='string'?x:x?.text||'').join('').trim();
+      const text=value.map(x=>{
+        if(typeof x==='string')return x;
+        if(typeof x?.text==='string')return x.text;
+        if(typeof x?.content==='string')return x.content;
+        if(typeof x?.text?.value==='string')return x.text.value;
+        return '';
+      }).join('').trim();
       if(text)return text;
     }
+    if(value&&typeof value==='object'){
+      for(const key of ['text','content','output_text','value']){
+        const found=read(value[key]);
+        if(found)return found;
+      }
+    }
+    return '';
+  };
+  for(const value of candidates){
+    const text=read(value);
+    if(text)return text;
   }
   const toolCalls=message?.tool_calls||j?.tool_calls;
   if(Array.isArray(toolCalls)&&toolCalls.length)return JSON.stringify({tool_calls:toolCalls});
@@ -128,8 +153,17 @@ export async function chat(messages,options={}){
   for(const model of [c.model,c.fallbackModel].filter((v,i,a)=>v&&a.indexOf(v)===i)){
     try{
       j=await requestCompletion(c,{...base,__timeoutMs:timeoutMs},model);
-      const content=extractContent(j);
+      let content=extractContent(j);
       if(content)return content;
+
+      // Some Gemini OpenAI-compatible responses can be empty when medium thinking
+      // consumes the response budget. Retry the same model once with lower thinking.
+      if(base.reasoning_effort!=='low'){
+        const retryBody={...base,reasoning_effort:'low',max_tokens:Math.min(Number(base.max_tokens||8192),16384),__timeoutMs:timeoutMs};
+        j=await requestCompletion(c,retryBody,model);
+        content=extractContent(j);
+        if(content)return content;
+      }
       lastError=err('MODEL_EMPTY',`Gemini returned an empty response for ${model}`,502,{model});
     }catch(e){
       lastError=e;
