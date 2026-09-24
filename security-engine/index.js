@@ -43,5 +43,7 @@ export async function scanSecurity(project){
     const audit=await execCommand(project,'npm audit --omit=dev --json',180000).catch(e=>({code:1,stdout:'',stderr:String(e?.message||e)}));
     if(audit.stdout){try{const j=JSON.parse(audit.stdout);findings.push({severity:(j.metadata?.vulnerabilities?.high||j.metadata?.vulnerabilities?.critical)?'high':'info',type:'npm-audit',path:'package.json',message:'Dependency audit completed.',details:j.metadata?.vulnerabilities||{}})}catch{}}
   }
-  return {success:true,summary:{filesScanned:scanFiles.length,findings:findings.length},findings};
+  const blocking=findings.filter(x=>x.severity==='critical'||x.severity==='high').length;
+  const summary={filesScanned:scanFiles.length,findings:findings.length,blockingFindings:blocking};
+  return {success:true,passed:blocking===0,summary,findings};
 }
