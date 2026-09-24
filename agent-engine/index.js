@@ -88,7 +88,7 @@ export async function execute({project,request,spec={},onStep}){
   let current=null;
   let raw='';
   for(let attempt=1;attempt<=3;attempt++){
-   raw=await chat(messages,{maxTokens:8192,timeoutMs:240000,responseFormat:{type:'json_schema',json_schema:{name:'nexora_action',strict:true,schema:{type:'object',additionalProperties:false,properties:{message:{type:'string'},action:{type:'object',additionalProperties:false,properties:{type:{type:'string',enum:['write_file','write_files','run','build','test','android_build','security_scan','index','remember','finish']},path:{type:'string'},content:{type:'string'},command:{type:'string'},variant:{type:'string'},files:{type:'array',items:{type:'object',additionalProperties:false,properties:{path:{type:'string'},content:{type:'string'}},required:['path','content']}}},required:['type']}},required:['message','action']}}};});
+   raw=await chat(messages,{maxTokens:8192,timeoutMs:240000,responseFormat:{type:'json_schema',json_schema:{name:'nexora_action',strict:true,schema:{type:'object',additionalProperties:false,properties:{message:{type:'string'},action:{type:'object',additionalProperties:false,properties:{type:{type:'string',enum:['write_file','write_files','run','build','test','android_build','security_scan','index','remember','finish']},path:{type:'string'},content:{type:'string'},command:{type:'string'},variant:{type:'string'},files:{type:'array',items:{type:'object',additionalProperties:false,properties:{path:{type:'string'},content:{type:'string'}},required:['path','content']}}},required:['type']}},required:['message','action']}}});
    try{current=parseAction(raw);break;}
    catch(protocolError){
     if(attempt===3)throw protocolError;
