@@ -111,7 +111,17 @@ export async function execute({project,request,spec={},onStep}){
    continue;
   }
   const record={step,message:current.message,action:current.action,result};history.push(record);onStep?.(record);
-  if(current.action.type==='finish')return {status:'completed',message:current.action.message||current.message,steps:history};
+  if(current.action.type==='finish'){
+   const checks=[];
+   try{const r=await build(project);checks.push({stage:'build',success:true,result:r});}catch(e){checks.push({stage:'build',success:false,error:e.message,code:e.code});}
+   try{const r=await runTests(project);checks.push({stage:'test',success:true,result:r});}catch(e){checks.push({stage:'test',success:false,error:e.message,code:e.code});}
+   try{const r=await scanSecurity(project);checks.push({stage:'security_scan',success:true,result:r});}catch(e){checks.push({stage:'security_scan',success:false,error:e.message,code:e.code});}
+   if(project.type==='android')try{const r=await buildAndroid(project,{variant:'debug'});checks.push({stage:'android_build',success:true,result:r});}catch(e){checks.push({stage:'android_build',success:false,error:e.message,code:e.code});}
+   const failed=checks.filter(x=>!x.success);
+   history.push({step,message:failed.length?'Final verification found failures; continuing to repair.':'Final verification passed.',action:{type:'final_verification'},result:{success:failed.length===0,checks}});onStep?.(history.at(-1));
+   if(!failed.length)return {status:'completed',message:current.action.message||current.message,steps:history,verification:checks};
+   continue;
+  }
  }
  throw err('AGENT_MAX_STEPS','Agent reached the maximum execution steps without finishing',422,{steps:history.length});
 }
