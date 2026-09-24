@@ -10,29 +10,27 @@ const $=s=>document.querySelector(s);
 
 async function api(url,opt={}){
   const headers={'Content-Type':'application/json',...(opt.headers||{})};
-  const retries=Number(opt.retries??2);
-  const requestOpt={...opt};
-  delete requestOpt.retries;
+  const retries=Number(opt.retries??8),timeoutMs=Number(opt.timeoutMs??90000);
+  const requestOpt={...opt};delete requestOpt.retries;delete requestOpt.timeoutMs;
   let lastError=null;
   for(let attempt=0;attempt<=retries;attempt++){
-    let r;
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
-      r=await fetch(url,{...requestOpt,headers,cache:'no-store'});
+      const r=await fetch(url,{...requestOpt,headers,cache:'no-store',signal:controller.signal});
+      const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
+      if(r.ok&&j.success)return j.data;
+      const message=j.error?.message||('Request failed (HTTP '+r.status+')');
+      if(r.status>=500&&attempt<retries){await new Promise(resolve=>setTimeout(resolve,Math.min(3000*(attempt+1),10000)));continue;}
+      throw new Error(message);
     }catch(e){
       lastError=e;
-      if(attempt<retries){
-        await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
-        continue;
-      }
-      throw new Error('Backend connection failed. Please reload the page and check the Render service.');
-    }
-    const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
-    if(!r.ok||!j.success) throw new Error(j.error?.message||('Request failed (HTTP '+r.status+')'));
-    return j.data;
+      if(attempt<retries){await new Promise(resolve=>setTimeout(resolve,Math.min(3000*(attempt+1),10000)));continue;}
+      if(e.name==='AbortError')throw new Error('Backend request timed out. Render may still be starting; please try again.');
+      throw new Error('Backend connection failed after multiple retries. Check the Render service logs and try again.');
+    }finally{clearTimeout(timer);}
   }
   throw lastError||new Error('Backend connection failed.');
 }
-
 function escapeHtml(s){
   return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
@@ -97,8 +95,7 @@ function renderMessages(){
         '<button data-prompt="Review and secure my project">Security engineer</button>'+
       '</div>'+
     '</div>';
-    return;
-  }
+    return;  }
   box.innerHTML=state.messages.map((m,i)=>{
     if(m.role==='user')return '<div class="msg-row user-row"><div class="user-bubble">'+escapeHtml(m.text)+'</div></div>';
     return '<div class="msg-row ai-row"><div class="ai-avatar">N</div><div class="ai-message">'+formatText(m.text)+'</div></div>';
@@ -197,8 +194,7 @@ async function sendMessage(){
   }catch(e){
     addMessage('ai','ERROR: '+e.message);
   }finally{
-    state.sending=false;$('#sendBtn').disabled=false;$('#attachment').value='';$('#attachName').textContent='';
-  }
+    state.sending=false;$('#sendBtn').disabled=false;$('#attachment').value='';$('#attachName').textContent='';  }
 }
 
 async function handleIntake(text,file){
