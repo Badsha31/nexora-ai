@@ -53,11 +53,11 @@ export async function health(){
   }
 }
 
-function extractContent(j){
+function extractContent(j,{allowReasoning=true}={}){
   const message=j?.choices?.[0]?.message;
   const candidates=[
     message?.content,
-    message?.reasoning_content,
+    ...(allowReasoning?[message?.reasoning_content]:[]),
     message?.output_text,
     j?.choices?.[0]?.text,
     j?.output_text,
@@ -156,7 +156,7 @@ export async function chat(messages,options={}){
   for(const model of models){
     try{
       j=await requestCompletion(c,{...base,__timeoutMs:timeoutMs},model);
-      let content=extractContent(j);
+      let content=extractContent(j,{allowReasoning:!options.responseFormat});
       if(content)return content;
 
       // Some Gemini OpenAI-compatible responses can be empty when medium thinking
@@ -164,7 +164,7 @@ export async function chat(messages,options={}){
       if(base.reasoning_effort!=='low'){
         const retryBody={...base,reasoning_effort:'low',max_tokens:Math.min(Number(base.max_tokens||8192),16384),__timeoutMs:timeoutMs};
         j=await requestCompletion(c,retryBody,model);
-        content=extractContent(j);
+        content=extractContent(j,{allowReasoning:!options.responseFormat});
         if(content)return content;
       }
       lastError=err('MODEL_EMPTY',`Gemini returned an empty response for ${model}`,502,{model});
