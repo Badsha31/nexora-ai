@@ -47,7 +47,21 @@ if(req.method==='POST'&&sub==='/test'){const b=await body(req);const result=awai
 if(req.method==='GET'&&sub==='/git')return json(res,200,{success:true,data:await execCommand(p,'git status --short && printf "\\n---BRANCH---\\n" && git branch --show-current')});
 if(req.method==='POST'&&sub==='/deploy'){requirePolicy('deployment');const b=await body(req);return json(res,200,{success:true,data:await deploy(p,{provider:b.provider||'local',repo:b.repo,branch:b.branch||'main',message:b.message})})}
 if(req.method==='POST'&&sub==='/plan'){const b=await body(req);return json(res,200,{success:true,data:await plan({project:p,request:b.request})})}
-if(req.method==='POST'&&sub==='/execute'){requirePolicy('model_access');const b=await body(req);if(!b.request)throw err('VALIDATION','request is required');const spec=normalizeProjectSpec({type:p.type,frontend:p.frontend,backend:p.backend,database:p.database_kind,requirements:getMemory(p.id).find(x=>x.type==='spec'&&x.key==='requirements')?.value||'',designReference:p.reference_path||''});return json(res,200,{success:true,data:await executeAgent({project:p,request:b.request,spec})})}}
+if(req.method==='POST'&&sub==='/execute'){
+ requirePolicy('model_access');const b=await body(req);if(!b.request)throw err('VALIDATION','request is required');
+ const spec=normalizeProjectSpec({type:p.type,frontend:p.frontend,backend:p.backend,database:p.database_kind,requirements:getMemory(p.id).find(x=>x.type==='spec'&&x.key==='requirements')?.value||'',designReference:p.reference_path||''});
+ const operationId=id();db.prepare('INSERT INTO operations(id,project_id,kind,status,command,output,error,started_at) VALUES(?,?,?,?,?,?,?,?)').run(operationId,p.id,'agent','queued',b.request,'','',now());
+ setImmediate(async()=>{
+  db.prepare('UPDATE operations SET status=?,started_at=? WHERE id=?').run('running',now(),operationId);
+  try{
+   const result=await executeAgent({project:p,request:b.request,spec,onStep:step=>db.prepare('UPDATE operations SET output=? WHERE id=?').run(JSON.stringify(step).slice(-500000),operationId)});
+   db.prepare('UPDATE operations SET status=?,output=?,finished_at=? WHERE id=?').run('completed',JSON.stringify(result).slice(-500000),now(),operationId);
+  }catch(e){
+   console.error('[AGENT ERROR]',e);db.prepare('UPDATE operations SET status=?,error=?,finished_at=? WHERE id=?').run('failed',JSON.stringify({code:e.code||'AGENT_FAILED',message:e.message,details:e.details||{}}),now(),operationId);
+  }
+ });
+ return json(res,202,{success:true,data:{operationId,status:'queued',projectId:p.id}});
+}}
 if(req.method==='GET'&&u.pathname==='/api/operations'){adminUser(req);return json(res,200,{success:true,data:db.prepare('SELECT * FROM operations ORDER BY id DESC LIMIT 100').all()});}
 if(req.method==='GET'&&u.pathname==='/api/credentials'){const user=adminUser(req);if(user.role!=='admin')throw err('FORBIDDEN','Admin required',403);return json(res,200,{success:true,data:listCredentials()});}
 throw err('NOT_FOUND','Route not found',404);
