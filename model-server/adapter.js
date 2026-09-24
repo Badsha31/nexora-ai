@@ -73,18 +73,38 @@ async function requestCompletion(c,payload,model=c.model){
   const headers={'Content-Type':'application/json',Authorization:`Bearer ${c.apiKey}`};
   const {__timeoutMs=240000,...requestBody}=payload;
   requestBody.model=model;
-  const r=await fetch(endpoint(c,'/chat/completions'),{
-    method:'POST',
-    headers,
-    body:JSON.stringify(requestBody),
-    signal:AbortSignal.timeout(__timeoutMs)
-  });
-  const raw=await r.text();
-  let j=null;try{j=raw?JSON.parse(raw):null}catch{}
-  if(!r.ok){
-    throw err(r.status===401?'MODEL_AUTH_REQUIRED':'MODEL_ERROR',`Gemini API returned HTTP ${r.status}`,r.status===401?503:502,{response:raw.slice(0,4000),status:r.status,model});
+
+  // Gemini can temporarily return 429/500/503 during load or quota bursts.
+  // Retry only transient failures, then let chat() fail over to the fallback model.
+  const maxAttempts=4;
+  let lastFailure=null;
+  for(let attempt=1;attempt<=maxAttempts;attempt++){
+    try{
+      const r=await fetch(endpoint(c,'/chat/completions'),{
+        method:'POST',
+        headers,
+        body:JSON.stringify(requestBody),
+        signal:AbortSignal.timeout(__timeoutMs)
+      });
+      const raw=await r.text();
+      let j=null;try{j=raw?JSON.parse(raw):null}catch{}
+      if(r.ok)return j;
+
+      const transient=[408,429,500,502,503,504].includes(r.status);
+      if(!transient || attempt===maxAttempts){
+        throw err(r.status===401?'MODEL_AUTH_REQUIRED':'MODEL_ERROR',`Gemini API returned HTTP ${r.status}`,r.status===401?503:502,{response:raw.slice(0,4000),status:r.status,model,attempts:attempt});
+      }
+      lastFailure={status:r.status,body:raw.slice(0,1000)};
+    }catch(e){
+      if(e.code)throw e;
+      if(attempt===maxAttempts)throw err('MODEL_ERROR',e.message||'Gemini request failed',502,{model,attempts:attempt});
+      lastFailure={message:e.message};
+    }
+
+    const delay=Math.min(8000,1000*2**(attempt-1))+Math.floor(Math.random()*300);
+    await new Promise(resolve=>setTimeout(resolve,delay));
   }
-  return j;
+  throw err('MODEL_ERROR','Gemini request failed after retries.',502,{model,lastFailure});
 }
 
 export async function chat(messages,options={}){
