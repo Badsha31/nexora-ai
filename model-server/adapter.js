@@ -93,9 +93,9 @@ export async function chat(messages,options={}){
   const base={
     model:c.model,
     messages,
-    temperature:options.temperature??0.15,
     max_tokens:Math.min(Number(options.maxTokens??8192),32768),
-    stream:false
+    stream:false,
+    reasoning_effort:options.reasoningEffort||'medium'
   };
   if(options.tools)base.tools=options.tools;
   if(options.toolChoice)base.tool_choice=options.toolChoice;
