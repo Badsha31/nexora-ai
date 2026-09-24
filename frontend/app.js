@@ -117,8 +117,7 @@ function bindHome(){
   renderMessages();
 
   $('#composer').addEventListener('submit',e=>{e.preventDefault();sendMessage();});
-  $('#messageInput').addEventListener('keydown',e=>{    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
-  });
+  $('#messageInput').addEventListener('keydown',e=>{    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}  });
   $('#messageInput').addEventListener('input',e=>{
     e.target.style.height='auto';
     e.target.style.height=Math.min(e.target.scrollHeight,180)+'px';
@@ -237,8 +236,7 @@ async function uploadReference(project,file){
   await api('/api/projects/'+project.id+'/reference',{method:'POST',body:JSON.stringify({dataUrl,name:file.name})});
 }
 function fileToDataUrl(file){
-  return new Promise((resolve,reject)=>{
-    const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);
+  return new Promise((resolve,reject)=>{    const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);
   });
 }
 
@@ -251,7 +249,7 @@ async function executeCurrent(request){
     if(!operationId)throw new Error('The backend did not return an engineering operation ID.');
     for(let i=0;i<360;i++){
       await new Promise(resolve=>setTimeout(resolve,i<10?2000:5000));
-      const op=await api('/api/operations?id='+encodeURIComponent(operationId),{timeoutMs:30000,retries:2});
+      const op=await api('/api/projects/'+state.currentProject.id+'/operation/'+encodeURIComponent(operationId),{timeoutMs:30000,retries:2});
       if(op.status==='completed'){
         let result={};try{result=op.output?JSON.parse(op.output):{};}catch{}
         thinking.text=(result.message||'Engineering task completed successfully.')+'\n\nVerified background operation completed.';
