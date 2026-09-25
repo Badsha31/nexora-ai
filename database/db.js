@@ -17,6 +17,6 @@ export function migrate(){
   addColumn('ALTER TABLE projects ADD COLUMN backend TEXT NOT NULL DEFAULT \'auto\'');
   addColumn('ALTER TABLE projects ADD COLUMN database_kind TEXT NOT NULL DEFAULT \'auto\'');
   addColumn('ALTER TABLE projects ADD COLUMN reference_path TEXT');
-  const defaults={deployment:true,terminal:true,file_write:true,model_access:true,android_build:true,security_scan:true,network:false,github_push:true,export_zip:true};
+  const defaults={deployment:true,terminal:true,file_read:true,file_write:true,model_access:true,android_build:true,security_scan:true,network:false,github_push:true,export_zip:true};
   for(const [k,v] of Object.entries(defaults)) db.prepare('INSERT OR IGNORE INTO policies VALUES(?,?,?)').run(k,v?1:0,new Date().toISOString());
 }
