@@ -5,3 +5,8 @@ test('agent permissions are explicit',()=>{assert.equal(canUse('coder','terminal
 import {parseAction} from '../agent-engine/index.js';
 test('agent parser accepts fenced JSON and normalizes single-file write_files',()=>{const x=parseAction('```json\n{"message":"write","action":{"type":"write_files","path":"index.html","content":"<h1>ok</h1>"}}\n```');assert.equal(x.action.type,'write_file');assert.equal(x.action.path,'index.html');});
 test('agent parser rejects prose without JSON action',()=>{assert.throws(()=>parseAction('I will build the project now.'),e=>e?.code==='MODEL_PROTOCOL');});
+
+test('agent parser accepts new inspection actions',()=>{
+  assert.equal(parseAction('{"message":"inspect","action":{"type":"read_file","path":"src/App.jsx"}}').action.type,'read_file');
+  assert.equal(parseAction('{"message":"inspect","action":{"type":"list_files"}}').action.type,'list_files');
+});
