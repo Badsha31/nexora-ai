@@ -10,7 +10,7 @@ const $=s=>document.querySelector(s);
 
 async function api(url,opt={}){
   const headers={'Content-Type':'application/json',...(opt.headers||{})};
-  const retries=Number(opt.retries??8),timeoutMs=Number(opt.timeoutMs??90000);
+  const retries=Number(opt.retries??3),timeoutMs=Number(opt.timeoutMs??90000);
   const requestOpt={...opt};delete requestOpt.retries;delete requestOpt.timeoutMs;
   let lastError=null;
   for(let attempt=0;attempt<=retries;attempt++){
@@ -20,7 +20,7 @@ async function api(url,opt={}){
       const j=await r.json().catch(()=>({success:false,error:{message:'Invalid server response'}}));
       if(r.ok&&j.success)return j.data;
       const message=j.error?.message||('Request failed (HTTP '+r.status+')');
-      if(r.status>=500&&attempt<retries){await new Promise(resolve=>setTimeout(resolve,Math.min(3000*(attempt+1),10000)));continue;}
+      if(r.status>=500&&attempt<retries){await new Promise(resolve=>setTimeout(resolve,Math.min(1200*(attempt+1),4000)));continue;}
       throw new Error(message);
     }catch(e){
       lastError=e;
@@ -247,19 +247,23 @@ async function executeCurrent(request){
     const started=await api('/api/projects/'+state.currentProject.id+'/execute',{method:'POST',body:JSON.stringify({request}),timeoutMs:30000,retries:3});
     const operationId=started?.operationId;
     if(!operationId)throw new Error('The backend did not return an engineering operation ID.');
+    thinking.text='Nexora is working…\n\nPlan → code → build → test → security verification.\nYou can keep chatting while the engineering job runs.';renderMessages();
     for(let i=0;i<360;i++){
-      await new Promise(resolve=>setTimeout(resolve,i<10?2000:5000));
+      await new Promise(resolve=>setTimeout(resolve,i<10?1000:2000));
       const op=await api('/api/projects/'+state.currentProject.id+'/operation/'+encodeURIComponent(operationId),{timeoutMs:30000,retries:2});
       if(op.status==='completed'){
         let result={};try{result=op.output?JSON.parse(op.output):{};}catch{}
-        thinking.text=(result.message||'Engineering task completed successfully.')+'\n\nVerified background operation completed.';
+        const checks=Array.isArray(result.verification)?result.verification:[];
+        const failed=checks.filter(x=>x&&x.success===false);
+        const verification=checks.length?'\n\nVerification: '+checks.map(x=>(x.success?'✓ ':'✗ ')+String(x.stage||'check')).join(' · '):'';
+        thinking.text=(result.message||'Engineering task completed successfully.')+verification+'\n\nThe operation completed with backend verification.';
         break;
       }
       if(op.status==='failed'){
         let failure={};try{failure=op.error?JSON.parse(op.error):{};}catch{}
         throw new Error(failure.message||'Engineering operation failed.');
       }
-      thinking.text='Nexora is working…\n\nStatus: '+op.status+' — building, testing and fixing the project.\nYou can keep chatting.';renderMessages();
+      thinking.text='Nexora is working…\n\nStatus: '+op.status+' — planning, coding, building, testing and fixing.\nYou can keep chatting.';renderMessages();
     }
     if(thinking.text.startsWith('Nexora is working…'))throw new Error('Engineering operation is still running. Open the project again shortly to see the final result.');
   }catch(e){thinking.text='ERROR: '+e.message;}
